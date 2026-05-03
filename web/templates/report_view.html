@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Report — {{ date }}{% endblock %}
+{% block content %}
+<style>
+.report-frame {
+    width: 100%;
+    height: calc(100vh - 140px);
+    border: none;
+    border-radius: var(--radius);
+    background: var(--surface);
+}
+.report-nav {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+.report-nav a {
+    color: var(--accent);
+    text-decoration: none;
+    font-weight: 600;
+}
+.report-nav a:hover { text-decoration: underline; }
+</style>
+
+<div class="report-nav">
+    <a href="/archive">← Back to Archive</a>
+    <span style="color:var(--text-muted);">{{ date }}</span>
+</div>
+
+<iframe class="report-frame" src="/static/reports/{{ date }}.html"></iframe>
+{% endblock %}

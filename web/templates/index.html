@@ -1,0 +1,236 @@
+{% extends "base.html" %}
+{% block title %}Sources &mdash; Follow Builders{% endblock %}
+{% block content %}
+<h1>Content Sources</h1>
+<p class="subtitle">Manage the builders, podcasts, blogs, and media sites you follow.</p>
+
+<div class="card">
+    <h2>&#128483; X / Twitter Accounts <span class="badge badge-x" id="x-count">0</span></h2>
+    <button class="btn btn-primary btn-sm" onclick="openModal('x')">+ Add Account</button>
+    <ul class="source-list" id="x-list" style="margin-top:16px;">
+        <li class="empty-state">Loading...</li>
+    </ul>
+</div>
+
+<div class="card">
+    <h2>&#127897; Podcasts <span class="badge badge-podcast" id="podcast-count">0</span></h2>
+    <button class="btn btn-primary btn-sm" onclick="openModal('podcast')">+ Add Podcast</button>
+    <ul class="source-list" id="podcast-list" style="margin-top:16px;">
+        <li class="empty-state">Loading...</li>
+    </ul>
+</div>
+
+<div class="card">
+    <h2>&#128221; Blogs <span class="badge badge-blog" id="blog-count">0</span></h2>
+    <button class="btn btn-primary btn-sm" onclick="openModal('blog')">+ Add Blog</button>
+    <ul class="source-list" id="blog-list" style="margin-top:16px;">
+        <li class="empty-state">Loading...</li>
+    </ul>
+</div>
+
+<div class="card">
+    <h2>&#128240; Media Sites <span class="badge badge-media" id="media-count">0</span></h2>
+    <button class="btn btn-primary btn-sm" onclick="openModal('media')">+ Add Media Site</button>
+    <ul class="source-list" id="media-list" style="margin-top:16px;">
+        <li class="empty-state">Loading...</li>
+    </ul>
+</div>
+
+<div class="modal-overlay" id="modal">
+    <div class="modal">
+        <h3 id="modal-title">Add Source</h3>
+        <div id="modal-body"></div>
+        <div class="modal-actions">
+            <button class="btn btn-sm" onclick="closeModal()" style="background:var(--bg);color:var(--text);">Cancel</button>
+            <button class="btn btn-primary btn-sm" onclick="saveSource()">Save</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let sources = { x_accounts: [], podcasts: [], blogs: [], media_sites: [] };
+let editingType = null;
+let editingIndex = null;
+
+async function load() {
+    const res = await fetch('/api/sources');
+    sources = await res.json();
+    if (!sources.media_sites) sources.media_sites = [];
+    renderAll();
+}
+
+function renderAll() {
+    renderList('x', sources.x_accounts, (item, i) => `
+        <div class="info">
+            <div class="name">${item.name}</div>
+            <div class="meta">@${item.handle}</div>
+        </div>
+        <div>
+            <button class="btn btn-sm" onclick="editSource('x', ${i})" style="background:var(--bg);color:var(--text);">Edit</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteSource('x', ${i})">Delete</button>
+        </div>
+    `);
+    renderList('podcast', sources.podcasts, (item, i) => `
+        <div class="info">
+            <div class="name">${item.name}</div>
+            <div class="meta">${item.rssUrl || ''}</div>
+        </div>
+        <div>
+            <button class="btn btn-sm" onclick="editSource('podcast', ${i})" style="background:var(--bg);color:var(--text);">Edit</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteSource('podcast', ${i})">Delete</button>
+        </div>
+    `);
+    renderList('blog', sources.blogs, (item, i) => `
+        <div class="info">
+            <div class="name">${item.name}</div>
+            <div class="meta">${item.indexUrl || ''}</div>
+        </div>
+        <div>
+            <button class="btn btn-sm" onclick="editSource('blog', ${i})" style="background:var(--bg);color:var(--text);">Edit</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteSource('blog', ${i})">Delete</button>
+        </div>
+    `);
+    renderList('media', sources.media_sites, (item, i) => `
+        <div class="info">
+            <div class="name">${item.name}</div>
+            <div class="meta">${item.type || 'rss'}${item.rssUrl ? ' · ' + item.rssUrl : ''}</div>
+        </div>
+        <div>
+            <button class="btn btn-sm" onclick="toggleMedia(${i})" style="background:var(--bg);color:var(--text);">${item.enabled !== false ? 'Disable' : 'Enable'}</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteSource('media', ${i})">Delete</button>
+        </div>
+    `);
+    document.getElementById('x-count').textContent = sources.x_accounts.length;
+    document.getElementById('podcast-count').textContent = sources.podcasts.length;
+    document.getElementById('blog-count').textContent = sources.blogs.length;
+    document.getElementById('media-count').textContent = sources.media_sites.length;
+}
+
+function renderList(type, items, templateFn) {
+    const list = document.getElementById(type + '-list');
+    if (items.length === 0) {
+        list.innerHTML = '<li class="empty-state">No sources yet. Add one above.</li>';
+        return;
+    }
+    list.innerHTML = items.map((item, i) =>
+        `<li class="source-item">${templateFn(item, i)}</li>`
+    ).join('');
+}
+
+function openModal(type, index = null) {
+    editingType = type;
+    editingIndex = index;
+    const isEdit = index !== null;
+    const item = isEdit ? sources[type + (type === 'x' ? '_accounts' : type === 'media' ? '_sites' : 's')][index] : {};
+
+    const titleMap = { x: 'X Account', podcast: 'Podcast', blog: 'Blog', media: 'Media Site' };
+    document.getElementById('modal-title').textContent = (isEdit ? 'Edit ' : 'Add ') + titleMap[type];
+
+    const body = document.getElementById('modal-body');
+    if (type === 'x') {
+        body.innerHTML = `
+            <div class="form-group"><label>Name</label><input id="f-name" value="${item.name || ''}" placeholder="Andrej Karpathy"></div>
+            <div class="form-group"><label>Handle</label><input id="f-handle" value="${item.handle || ''}" placeholder="karpathy"></div>
+        `;
+    } else if (type === 'podcast') {
+        body.innerHTML = `
+            <div class="form-group"><label>Name</label><input id="f-name" value="${item.name || ''}" placeholder="Latent Space"></div>
+            <div class="form-group"><label>RSS URL</label><input id="f-rss" value="${item.rssUrl || ''}" placeholder="https://..."></div>
+            <div class="form-group"><label>YouTube / Website URL</label><input id="f-url" value="${item.url || ''}" placeholder="https://..."></div>
+        `;
+    } else if (type === 'blog') {
+        body.innerHTML = `
+            <div class="form-group"><label>Name</label><input id="f-name" value="${item.name || ''}" placeholder="Anthropic Engineering"></div>
+            <div class="form-group"><label>Index URL</label><input id="f-index" value="${item.indexUrl || ''}" placeholder="https://..."></div>
+            <div class="form-group"><label>Article Base URL</label><input id="f-base" value="${item.articleBaseUrl || ''}" placeholder="https://..."></div>
+        `;
+    } else if (type === 'media') {
+        body.innerHTML = `
+            <div class="form-group"><label>Name</label><input id="f-name" value="${item.name || ''}" placeholder="TechCrunch"></div>
+            <div class="form-group"><label>Type</label>
+                <select id="f-type" style="width:100%;padding:10px 14px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:0.95rem;">
+                    <option value="rss" ${item.type === 'rss' ? 'selected' : ''}>RSS Feed</option>
+                    <option value="hackernews" ${item.type === 'hackernews' ? 'selected' : ''}>Hacker News</option>
+                </select>
+            </div>
+            <div class="form-group"><label>RSS URL (leave empty for Hacker News)</label><input id="f-rss" value="${item.rssUrl || ''}" placeholder="https://..."></div>
+        `;
+    }
+    document.getElementById('modal').classList.add('open');
+}
+
+function closeModal() {
+    document.getElementById('modal').classList.remove('open');
+    editingType = null;
+    editingIndex = null;
+}
+
+function saveSource() {
+    const name = document.getElementById('f-name').value.trim();
+    if (!name) { showToast('Name is required', 'error'); return; }
+
+    let item;
+    if (editingType === 'x') {
+        const handle = document.getElementById('f-handle').value.trim();
+        if (!handle) { showToast('Handle is required', 'error'); return; }
+        item = { name, handle };
+    } else if (editingType === 'podcast') {
+        item = { name, rssUrl: document.getElementById('f-rss').value.trim(), url: document.getElementById('f-url').value.trim() };
+    } else if (editingType === 'blog') {
+        item = { name, type: 'scrape', indexUrl: document.getElementById('f-index').value.trim(), articleBaseUrl: document.getElementById('f-base').value.trim(), fetchMethod: 'http' };
+    } else if (editingType === 'media') {
+        item = { name, type: document.getElementById('f-type').value, rssUrl: document.getElementById('f-rss').value.trim(), enabled: true };
+    }
+
+    const arrKey = editingType === 'x' ? 'x_accounts' : editingType === 'media' ? 'media_sites' : editingType + 's';
+    if (editingIndex !== null) {
+        sources[arrKey][editingIndex] = item;
+    } else {
+        sources[arrKey].push(item);
+    }
+
+    save();
+    closeModal();
+}
+
+function editSource(type, index) {
+    openModal(type, index);
+}
+
+function toggleMedia(index) {
+    sources.media_sites[index].enabled = sources.media_sites[index].enabled === false;
+    save();
+}
+
+function deleteSource(type, index) {
+    const arrKey = type === 'x' ? 'x_accounts' : type === 'media' ? 'media_sites' : type + 's';
+    sources[arrKey].splice(index, 1);
+    save();
+}
+
+async function save() {
+    const res = await fetch('/api/sources', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(sources)
+    });
+    if (res.ok) {
+        renderAll();
+        showToast('Saved successfully', 'success');
+    } else {
+        showToast('Failed to save', 'error');
+    }
+}
+
+function showToast(msg, type) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'toast ' + type + ' show';
+    setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+load();
+</script>
+{% endblock %}

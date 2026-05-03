@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Archive — Follow Builders{% endblock %}
+{% block content %}
+<h1>Archive</h1>
+<p class="subtitle">Browse all past daily digests.</p>
+
+<div class="card">
+    <div id="reports-list">
+        <div class="empty-state">Loading reports...</div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function load() {
+    const res = await fetch('/api/reports');
+    const reports = await res.json();
+    const list = document.getElementById('reports-list');
+
+    if (reports.length === 0) {
+        list.innerHTML = '<div class="empty-state">No reports yet. Check back tomorrow!</div>';
+        return;
+    }
+
+    list.innerHTML = '<ul class="source-list">' + reports.map(r => `
+        <li class="source-item" style="cursor:pointer;" onclick="location.href='/report/${r.date}'">
+            <div class="info">
+                <div class="name">${r.display}</div>
+                <div class="meta">AI Builders Digest</div>
+            </div>
+            <div class="badge badge-x">View →</div>
+        </li>
+    `).join('') + '</ul>';
+}
+load();
+</script>
+{% endblock %}
