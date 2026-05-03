@@ -9,6 +9,8 @@ what they're saying.
 **Philosophy:** Follow people who build products and have original opinions, not
 influencers who regurgitate information.
 
+
+
 ## What You Get
 
 A daily or weekly digest delivered to your preferred messaging app (Telegram, Discord,
