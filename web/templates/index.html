@@ -4,6 +4,30 @@
 <h1>Content Sources</h1>
 <p class="subtitle">Manage the builders, podcasts, blogs, and media sites you follow.</p>
 
+<!-- Search and Filter -->
+<div class="card" style="margin-bottom: 24px;">
+    <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+        <div style="flex: 1; min-width: 200px;">
+            <input type="text" id="searchInput" placeholder="🔍 Search sources..." 
+                   style="width: 100%; padding: 10px 14px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); font-size: 0.95rem;">
+        </div>
+        <div style="display: flex; gap: 8px;">
+            <select id="typeFilter" style="padding: 10px 14px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); font-size: 0.95rem;">
+                <option value="all">All Types</option>
+                <option value="x">X/Twitter</option>
+                <option value="podcast">Podcasts</option>
+                <option value="blog">Blogs</option>
+                <option value="media">Media</option>
+            </select>
+            <select id="statusFilter" style="padding: 10px 14px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); font-size: 0.95rem;">
+                <option value="all">All Status</option>
+                <option value="enabled">Enabled</option>
+                <option value="disabled">Disabled</option>
+            </select>
+        </div>
+    </div>
+</div>
+
 <div class="card">
     <h2>&#128483; X / Twitter Accounts <span class="badge badge-x" id="x-count">0</span></h2>
     <button class="btn btn-primary btn-sm" onclick="openModal('x')">+ Add Account</button>
@@ -54,6 +78,11 @@ let sources = { x_accounts: [], podcasts: [], blogs: [], media_sites: [] };
 let editingType = null;
 let editingIndex = null;
 
+// Search and filter state
+let searchQuery = '';
+let typeFilter = 'all';
+let statusFilter = 'all';
+
 async function load() {
     const res = await fetch('/api/sources');
     sources = await res.json();
@@ -62,7 +91,13 @@ async function load() {
 }
 
 function renderAll() {
-    renderList('x', sources.x_accounts, (item, i) => `
+    // Apply filters
+    const filteredX = filterItems(sources.x_accounts, 'x');
+    const filteredPodcasts = filterItems(sources.podcasts, 'podcast');
+    const filteredBlogs = filterItems(sources.blogs, 'blog');
+    const filteredMedia = filterItems(sources.media_sites, 'media');
+
+    renderList('x', filteredX, (item, i) => `
         <div class="info">
             <div class="name">${item.name}</div>
             <div class="meta">@${item.handle}</div>
@@ -72,7 +107,7 @@ function renderAll() {
             <button class="btn btn-danger btn-sm" onclick="deleteSource('x', ${i})">Delete</button>
         </div>
     `);
-    renderList('podcast', sources.podcasts, (item, i) => `
+    renderList('podcast', filteredPodcasts, (item, i) => `
         <div class="info">
             <div class="name">${item.name}</div>
             <div class="meta">${item.rssUrl || ''}</div>
@@ -82,7 +117,7 @@ function renderAll() {
             <button class="btn btn-danger btn-sm" onclick="deleteSource('podcast', ${i})">Delete</button>
         </div>
     `);
-    renderList('blog', sources.blogs, (item, i) => `
+    renderList('blog', filteredBlogs, (item, i) => `
         <div class="info">
             <div class="name">${item.name}</div>
             <div class="meta">${item.indexUrl || ''}</div>
@@ -92,7 +127,7 @@ function renderAll() {
             <button class="btn btn-danger btn-sm" onclick="deleteSource('blog', ${i})">Delete</button>
         </div>
     `);
-    renderList('media', sources.media_sites, (item, i) => `
+    renderList('media', filteredMedia, (item, i) => `
         <div class="info">
             <div class="name">${item.name}</div>
             <div class="meta">${item.type || 'rss'}${item.rssUrl ? ' · ' + item.rssUrl : ''}</div>
@@ -102,16 +137,41 @@ function renderAll() {
             <button class="btn btn-danger btn-sm" onclick="deleteSource('media', ${i})">Delete</button>
         </div>
     `);
-    document.getElementById('x-count').textContent = sources.x_accounts.length;
-    document.getElementById('podcast-count').textContent = sources.podcasts.length;
-    document.getElementById('blog-count').textContent = sources.blogs.length;
-    document.getElementById('media-count').textContent = sources.media_sites.length;
+    document.getElementById('x-count').textContent = filteredX.length;
+    document.getElementById('podcast-count').textContent = filteredPodcasts.length;
+    document.getElementById('blog-count').textContent = filteredBlogs.length;
+    document.getElementById('media-count').textContent = filteredMedia.length;
+}
+
+function filterItems(items, type) {
+    // Type filter
+    if (typeFilter !== 'all' && typeFilter !== type) return [];
+    
+    // Search filter
+    if (searchQuery) {
+        const query = searchQuery.toLowerCase();
+        items = items.filter(item => 
+            item.name.toLowerCase().includes(query) || 
+            (item.handle && item.handle.toLowerCase().includes(query)) ||
+            (item.rssUrl && item.rssUrl.toLowerCase().includes(query)) ||
+            (item.indexUrl && item.indexUrl.toLowerCase().includes(query))
+        );
+    }
+    
+    // Status filter (only for media sites)
+    if (statusFilter !== 'all' && type === 'media') {
+        items = items.filter(item => 
+            statusFilter === 'enabled' ? item.enabled !== false : item.enabled === false
+        );
+    }
+    
+    return items;
 }
 
 function renderList(type, items, templateFn) {
     const list = document.getElementById(type + '-list');
     if (items.length === 0) {
-        list.innerHTML = '<li class="empty-state">No sources yet. Add one above.</li>';
+        list.innerHTML = '<li class="empty-state">No sources found. Add one above or adjust filters.</li>';
         return;
     }
     list.innerHTML = items.map((item, i) =>
@@ -230,6 +290,22 @@ function showToast(msg, type) {
     t.className = 'toast ' + type + ' show';
     setTimeout(() => t.classList.remove('show'), 2500);
 }
+
+// Event listeners for search and filter
+document.getElementById('searchInput').addEventListener('input', (e) => {
+    searchQuery = e.target.value;
+    renderAll();
+});
+
+document.getElementById('typeFilter').addEventListener('change', (e) => {
+    typeFilter = e.target.value;
+    renderAll();
+});
+
+document.getElementById('statusFilter').addEventListener('change', (e) => {
+    statusFilter = e.target.value;
+    renderAll();
+});
 
 load();
 </script>

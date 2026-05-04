@@ -8,12 +8,20 @@
     border: none;
     border-radius: var(--radius);
     background: var(--surface);
+    transition: all 0.3s ease;
+}
+.report-frame.reader-mode {
+    max-width: 800px;
+    margin: 0 auto;
+    height: calc(100vh - 180px);
 }
 .report-nav {
     display: flex;
     justify-content: space-between;
     align-items: center;
     margin-bottom: 16px;
+    flex-wrap: wrap;
+    gap: 12px;
 }
 .report-nav a {
     color: var(--accent);
@@ -21,12 +29,182 @@
     font-weight: 600;
 }
 .report-nav a:hover { text-decoration: underline; }
+.reader-controls {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+.reader-btn {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 8px 12px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    color: var(--text);
+    transition: all 0.15s;
+}
+.reader-btn:hover {
+    background: var(--accent);
+    color: #fff;
+}
+.reader-btn.active {
+    background: var(--accent);
+    color: #fff;
+}
+.font-size-controls {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.font-size-controls button {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    cursor: pointer;
+    font-size: 1rem;
+}
+.font-size-controls button:hover {
+    background: var(--accent);
+    color: #fff;
+}
+.font-size-label {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    min-width: 40px;
+    text-align: center;
+}
 </style>
 
 <div class="report-nav">
     <a href="/archive">← Back to Archive</a>
     <span style="color:var(--text-muted);">{{ date }}</span>
+    <div class="reader-controls">
+        <button class="reader-btn" id="readerToggle" onclick="toggleReaderMode()">
+            📖 Reader Mode
+        </button>
+        <div class="font-size-controls">
+            <button onclick="changeFontSize(-1)">A-</button>
+            <span class="font-size-label" id="fontSizeLabel">100%</span>
+            <button onclick="changeFontSize(1)">A+</button>
+        </div>
+        <button class="reader-btn" id="focusToggle" onclick="toggleFocusMode()">
+            🎯 Focus
+        </button>
+    </div>
 </div>
 
-<iframe class="report-frame" src="/static/reports/{{ date }}.html"></iframe>
+<iframe class="report-frame" id="reportFrame" src="/static/reports/{{ date }}.html"></iframe>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let readerMode = false;
+let focusMode = false;
+let fontSize = 100;
+
+function toggleReaderMode() {
+    readerMode = !readerMode;
+    const frame = document.getElementById('reportFrame');
+    const btn = document.getElementById('readerToggle');
+    
+    frame.classList.toggle('reader-mode', readerMode);
+    btn.classList.toggle('active', readerMode);
+    
+    // Apply reader mode styles to iframe
+    try {
+        const iframeDoc = frame.contentDocument || frame.contentWindow.document;
+        if (readerMode) {
+            iframeDoc.body.style.fontFamily = 'Georgia, serif';
+            iframeDoc.body.style.lineHeight = '1.8';
+            iframeDoc.body.style.maxWidth = '800px';
+            iframeDoc.body.style.margin = '0 auto';
+            iframeDoc.body.style.padding = '20px';
+        } else {
+            iframeDoc.body.style.fontFamily = '';
+            iframeDoc.body.style.lineHeight = '';
+            iframeDoc.body.style.maxWidth = '';
+            iframeDoc.body.style.margin = '';
+            iframeDoc.body.style.padding = '';
+        }
+    } catch (e) {
+        console.log('Cannot modify iframe styles (cross-origin)');
+    }
+    
+    localStorage.setItem('readerMode', readerMode);
+}
+
+function toggleFocusMode() {
+    focusMode = !focusMode;
+    const btn = document.getElementById('focusToggle');
+    const nav = document.querySelector('nav');
+    
+    btn.classList.toggle('active', focusMode);
+    
+    if (focusMode) {
+        nav.style.display = 'none';
+        document.body.style.paddingTop = '0';
+    } else {
+        nav.style.display = '';
+        document.body.style.paddingTop = '';
+    }
+    
+    localStorage.setItem('focusMode', focusMode);
+}
+
+function changeFontSize(delta) {
+    fontSize = Math.max(80, Math.min(150, fontSize + delta * 10));
+    document.getElementById('fontSizeLabel').textContent = fontSize + '%';
+    
+    try {
+        const frame = document.getElementById('reportFrame');
+        const iframeDoc = frame.contentDocument || frame.contentWindow.document;
+        iframeDoc.body.style.fontSize = fontSize + '%';
+    } catch (e) {
+        console.log('Cannot modify iframe styles (cross-origin)');
+    }
+    
+    localStorage.setItem('fontSize', fontSize);
+}
+
+// Load saved preferences
+document.addEventListener('DOMContentLoaded', () => {
+    const savedReaderMode = localStorage.getItem('readerMode') === 'true';
+    const savedFocusMode = localStorage.getItem('focusMode') === 'true';
+    const savedFontSize = localStorage.getItem('fontSize');
+    
+    if (savedReaderMode) toggleReaderMode();
+    if (savedFocusMode) toggleFocusMode();
+    if (savedFontSize) {
+        fontSize = parseInt(savedFontSize);
+        document.getElementById('fontSizeLabel').textContent = fontSize + '%';
+    }
+});
+
+// Keyboard shortcuts
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'r' && e.ctrlKey) {
+        e.preventDefault();
+        toggleReaderMode();
+    }
+    if (e.key === 'f' && e.ctrlKey) {
+        e.preventDefault();
+        toggleFocusMode();
+    }
+    if (e.key === '+' && e.ctrlKey) {
+        e.preventDefault();
+        changeFontSize(1);
+    }
+    if (e.key === '-' && e.ctrlKey) {
+        e.preventDefault();
+        changeFontSize(-1);
+    }
+});
+</script>
 {% endblock %}

@@ -1,9 +1,13 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Follow Builders{% endblock %}</title>
+    <meta name="theme-color" content="#0f0f12">
+    <meta name="description" content="AI-powered daily digest from top builders">
+    <link rel="manifest" href="/static/manifest.json">
+    <link rel="icon" href="/static/favicon.ico">
     <style>
         :root {
             --bg: #0f0f12;
@@ -18,6 +22,16 @@
             --danger: #ef4444;
             --success: #22c55e;
         }
+        
+        [data-theme="light"] {
+            --bg: #f8f9fa;
+            --surface: #ffffff;
+            --surface-hover: #f1f3f5;
+            --text: #1a1a2e;
+            --text-muted: #6c757d;
+            --border: #dee2e6;
+        }
+        
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -55,6 +69,7 @@
         nav .links {
             display: flex;
             gap: 8px;
+            align-items: center;
         }
         nav .links a {
             color: var(--text-muted);
@@ -68,6 +83,20 @@
         nav .links a:hover, nav .links a.active {
             color: var(--text);
             background: var(--surface-hover);
+        }
+        .theme-toggle {
+            background: var(--surface-hover);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 8px 12px;
+            cursor: pointer;
+            font-size: 1.1rem;
+            color: var(--text);
+            transition: all 0.15s;
+        }
+        .theme-toggle:hover {
+            background: var(--accent);
+            color: #fff;
         }
         .container {
             max-width: 1100px;
@@ -259,6 +288,7 @@
             <div class="links">
                 <a href="/" class="{% if request.path == '/' %}active{% endif %}">Sources</a>
                 <a href="/archive" class="{% if request.path == '/archive' %}active{% endif %}">Archive</a>
+                <button class="theme-toggle" id="themeToggle" title="Toggle theme">🌙</button>
             </div>
         </div>
     </nav>
@@ -267,5 +297,32 @@
     </div>
     <div class="toast" id="toast"></div>
     {% block scripts %}{% endblock %}
+    
+    <script>
+        // Theme toggle
+        const themeToggle = document.getElementById('themeToggle');
+        const html = document.documentElement;
+        
+        // Load saved theme
+        const savedTheme = localStorage.getItem('theme') || 'dark';
+        html.setAttribute('data-theme', savedTheme);
+        themeToggle.textContent = savedTheme === 'dark' ? '☀️' : '🌙';
+        
+        themeToggle.addEventListener('click', () => {
+            const currentTheme = html.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            
+            html.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            themeToggle.textContent = newTheme === 'dark' ? '☀️' : '🌙';
+        });
+        
+        // Service Worker registration
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/static/sw.js')
+                .then(reg => console.log('SW registered'))
+                .catch(err => console.log('SW registration failed'));
+        }
+    </script>
 </body>
 </html>
