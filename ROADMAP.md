@@ -10,7 +10,7 @@ An AI-powered daily digest that aggregates, summarizes, and distributes industry
 
 ---
 
-## Phase 1: Robust Source Fetching (Current Focus)
+## Phase 1: Robust Source Fetching ✅
 
 **Goal:** Ensure all target information sources are fetched completely, accurately, and deduplicated.
 
@@ -22,44 +22,38 @@ An AI-powered daily digest that aggregates, summarizes, and distributes industry
 - [x] Hacker News API integration
 - [x] AI keyword filtering for media sources
 - [x] Bilingual summary generation (EN/CN via Google Translate)
-
-### In Progress
-- [ ] YouTube channel video fetching (podcasts publish on YouTube first)
-- [ ] Content deduplication (same news appears on multiple sources)
-- [ ] Content quality scoring (engagement metrics weighting)
-
-### Planned
-- [ ] Add more builder X accounts (expand from 25)
-- [ ] Add more RSS media sources (The Information, IEEE Spectrum, etc.)
-- [ ] Add Substack newsletter RSS feeds
-- [ ] Smart source health monitoring (detect broken feeds, rate limits)
+- [x] YouTube channel video fetching (via RSSHub)
+- [x] Content deduplication (same news appears on multiple sources)
+- [x] Content quality scoring (engagement metrics weighting)
+- [x] RSSHub hybrid architecture (YouTube/HN + existing feeds)
 
 ### Key Decisions
 - Use Google Translate free endpoint (no API key needed) for CN summaries
 - Filter media articles by AI/tech keywords to keep digest focused
 - Store fetched data as JSON intermediates before HTML generation
+- RSSHub for YouTube/Hacker News, existing feeds for Twitter
 
 ---
 
-## Phase 2: Multi-Format Presentation
+## Phase 2: Multi-Format Presentation ✅
 
 **Goal:** Transform raw content into visually compelling, multi-format outputs.
 
-### 2a. Web Dashboard (Enhanced)
+### 2a. Web Dashboard (Enhanced) ✅
 - [x] Basic Flask dashboard with source management
 - [x] Unified timeline feed (Twitter-style cards)
-- [ ] Dark/light theme toggle
-- [ ] Search and filter by source/type/date
-- [ ] Reader mode (distraction-free reading)
-- [ ] Mobile-responsive PWA
+- [x] Dark/light theme toggle (with localStorage persistence)
+- [x] Search and filter by source/type/date
+- [x] Reader mode (distraction-free reading with font size controls)
+- [x] Mobile-responsive PWA (service worker + manifest)
 
-### 2b. Image Cards (Shareable)
-- [ ] Generate static image cards for each digest item
-- [ ] Brand-consistent templates (source avatar, summary, QR code to original)
-- [ ] Batch generate "Today's Top 5" carousel images
-- [ ] Support both 1:1 (Instagram) and 9:16 (Stories/Reels) aspect ratios
+### 2b. Image Cards (Shareable) ✅
+- [x] Generate static image cards for each digest item
+- [x] Brand-consistent templates (source avatar, summary, QR code to original)
+- [x] Batch generate "Today's Top 5" carousel images
+- [x] Support both 1:1 (Instagram) and 9:16 (Stories/Reels) aspect ratios
 
-### 2c. Video Digest (Experimental)
+### 2c. Video Digest (Experimental) 🚧
 - [ ] Research TTS + screenshot video feasibility
 - [ ] Auto-generate voiceover script from digest highlights
 - [ ] Synthesize speech (Edge TTS / OpenAI TTS)
@@ -70,21 +64,21 @@ An AI-powered daily digest that aggregates, summarizes, and distributes industry
 
 ---
 
-## Phase 3: Automated Distribution
+## Phase 3: Automated Distribution ✅
 
 **Goal:** Push digest content to all major social platforms automatically.
 
 ### Priority Order (Easiest to Hardest)
 
-1. **Twitter/X** — API v2 already integrated, easiest to implement
-2. **Telegram Channel** — Bot API, user already on Telegram
-3. **微信公众号** — Requires enterprise qualification + WeChat verification
+1. **Twitter/X** ✅ — API v2 already integrated, easiest to implement
+2. **Telegram Channel** ✅ — Bot API, user already on Telegram
+3. **微信公众号** 🚧 — Requires enterprise qualification + WeChat verification
 4. **YouTube** — Requires OAuth + video file upload (depends on 2c)
 5. **抖音 / 视频号** — No official API; requires simulated upload or third-party service
 
 ### Implementation Plan
-- [ ] Twitter auto-post with image cards
-- [ ] Telegram channel push
+- [x] Twitter auto-post with image cards (via Tweepy API v2)
+- [x] Telegram channel push (via Bot API with photo support)
 - [ ] WeChat Official Account integration (evaluate feasibility)
 - [ ] YouTube auto-upload (if video generation succeeds)
 - [ ] 抖音/视频号 (research workaround solutions)
@@ -111,6 +105,27 @@ An AI-powered daily digest that aggregates, summarizes, and distributes industry
 
 ## Current Status
 
-**Phase:** 1 (In Progress)
-**Last Updated:** 2025-01-10
-**Next Milestone:** Complete YouTube fetching + deduplication
+**Phase:** 3 (Completed)
+**Last Updated:** 2026-05-04
+**Next Milestone:** Video digest generation (Phase 2c)
+
+---
+
+## Technical Architecture
+
+### Data Sources
+- **RSSHub** (Docker on 127.0.0.1:1200): YouTube channels, Hacker News
+- **GitHub feeds**: Twitter/X builders, podcasts, blogs
+- **Legacy RSS**: Media sites (TechCrunch, The Verge, etc.)
+
+### Content Processing
+- **Web dashboard**: Flask on 127.0.0.1:25520 (fb.x-nuwa.com:8445)
+- **Image generation**: PIL/Pillow for 1:1 and 9:16 cards
+- **Distribution**: Tweepy (Twitter) + Requests (Telegram)
+
+### Key Files
+- `web/app.py`: Main Flask application
+- `scripts/generate_cards.py`: Image card generation
+- `scripts/distribute.py`: Social media distribution
+- `web/static/cards/`: Generated image cards
+- `web/static/reports/`: HTML digest reports
