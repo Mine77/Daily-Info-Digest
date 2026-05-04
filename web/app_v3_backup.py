@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Follow Builders Web Dashboard v4 - RSSHub Hybrid Architecture
-- RSSHub for YouTube + Hacker News
-- Existing GitHub feeds for Twitter
-- Improved content cleaning (replaces Firecrawl)
+Follow Builders Web Dashboard v3 - Twitter Feed Style
+- Unified timeline with collapsible cards
+- Bilingual EN/CN support
+- RSS media sources
 """
 
 import os
@@ -12,7 +12,6 @@ import subprocess
 import urllib.request
 import urllib.parse
 import re
-import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -28,9 +27,6 @@ SOURCES_FILE = DATA_DIR / 'sources.json'
 
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 REPORTS_DIR.mkdir(parents=True, exist_ok=True)
-
-# RSSHub configuration
-RSSHUB_BASE = os.environ.get('RSSHUB_BASE', 'http://127.0.0.1:1200')
 
 # ---------------------------------------------------------------------------
 # Translation
@@ -52,63 +48,7 @@ def translate(text, target='zh-CN', max_chars=4000):
         return text
 
 # ---------------------------------------------------------------------------
-# RSSHub Integration
-# ---------------------------------------------------------------------------
-
-def fetch_rsshub_feed(route, max_items=10):
-    """Fetch and parse RSS from RSSHub"""
-    url = f"{RSSHUB_BASE}{route}"
-    try:
-        req = urllib.request.Request(url, headers={
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        })
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            xml_content = resp.read().decode('utf-8', errors='replace')
-    except Exception as e:
-        print(f"RSSHub fetch error for {route}: {e}")
-        return []
-
-    try:
-        root = ET.fromstring(xml_content)
-        channel = root.find('channel')
-        if channel is None:
-            return []
-
-        articles = []
-        for item in channel.findall('item')[:max_items]:
-            title = item.findtext('title', '').strip()
-            link = item.findtext('link', '').strip()
-            description = item.findtext('description', '').strip()
-            pub_date = item.findtext('pubDate', '').strip()
-
-            # Clean HTML from description
-            description = re.sub(r'<[^>]+>', ' ', description).replace('&nbsp;', ' ').strip()
-            if len(description) > 300:
-                description = description[:297] + '...'
-
-            if title and link:
-                articles.append({
-                    'title': title,
-                    'url': link,
-                    'description': description,
-                    'pubDate': pub_date
-                })
-
-        return articles
-    except Exception as e:
-        print(f"RSSHub XML parse error for {route}: {e}")
-        return []
-
-def fetch_youtube_channel(channel_id, max_items=5):
-    """Fetch YouTube channel via RSSHub"""
-    return fetch_rsshub_feed(f'/youtube/channel/{channel_id}', max_items)
-
-def fetch_hackernews_rsshub(max_items=5):
-    """Fetch Hacker News via RSSHub"""
-    return fetch_rsshub_feed('/hackernews/best', max_items)
-
-# ---------------------------------------------------------------------------
-# Legacy RSS Media Fetching (fallback)
+# RSS Media Fetching
 # ---------------------------------------------------------------------------
 
 DEFAULT_MEDIA_SITES = [
@@ -136,7 +76,6 @@ def is_ai_related(text):
     return any(kw in text_lower for kw in AI_KEYWORDS)
 
 def fetch_rss_feed(rss_url, max_items=5):
-    """Legacy RSS fetcher - fallback when RSSHub doesn't have a route"""
     try:
         req = urllib.request.Request(rss_url, headers={
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
@@ -189,8 +128,7 @@ def fetch_rss_feed(rss_url, max_items=5):
 
     return articles
 
-def fetch_hackernews_legacy(max_items=5):
-    """Legacy Hacker News fetcher - fallback"""
+def fetch_hackernews(max_items=5):
     try:
         req = urllib.request.Request(
             'https://hn.algolia.com/api/v1/search_by_date?tags=story&hitsPerPage=30',
@@ -218,64 +156,6 @@ def fetch_hackernews_legacy(max_items=5):
         if len(articles) >= max_items:
             break
     return articles
-
-# ---------------------------------------------------------------------------
-# Content Cleaning (replaces Firecrawl)
-# ---------------------------------------------------------------------------
-
-def clean_html_content(html_content, max_length=500):
-    """Clean HTML content to readable text"""
-    if not html_content:
-        return ''
-    
-    # Remove script and style tags
-    html_content = re.sub(r'<script[^>]*>[\s\S]*?</script>', '', html_content, flags=re.IGNORECASE)
-    html_content = re.sub(r'<style[^>]*>[\s\S]*?</style>', '', html_content, flags=re.IGNORECASE)
-    
-    # Remove HTML tags
-    text = re.sub(r'<[^>]+>', ' ', html_content)
-    
-    # Decode HTML entities
-    text = text.replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>')
-    text = text.replace('&quot;', '"').replace('&#x27;', "'").replace('&nbsp;', ' ')
-    
-    # Clean whitespace
-    text = re.sub(r'\s+', ' ', text).strip()
-    
-    # Truncate
-    if len(text) > max_length:
-        text = text[:max_length] + '...'
-    
-    return text
-
-def extract_article_content(url, max_length=500):
-    """Extract clean content from article URL (simple HTTP fetch)"""
-    try:
-        req = urllib.request.Request(url, headers={
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        })
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            html = resp.read().decode('utf-8', errors='replace')
-        
-        # Extract main content (simplified)
-        # Try to find article body
-        article_match = re.search(r'<article[^>]*>([\s\S]*?)</article>', html, re.IGNORECASE)
-        if article_match:
-            return clean_html_content(article_match.group(1), max_length)
-        
-        # Try main content area
-        main_match = re.search(r'<main[^>]*>([\s\S]*?)</main>', html, re.IGNORECASE)
-        if main_match:
-            return clean_html_content(main_match.group(1), max_length)
-        
-        # Fallback to body
-        body_match = re.search(r'<body[^>]*>([\s\S]*?)</body>', html, re.IGNORECASE)
-        if body_match:
-            return clean_html_content(body_match.group(1), max_length)
-        
-        return ''
-    except Exception:
-        return ''
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -388,14 +268,13 @@ def api_report_content(date):
         return f.read()
 
 # ---------------------------------------------------------------------------
-# Report Generator (Hybrid RSSHub + Legacy)
+# Report Generator
 # ---------------------------------------------------------------------------
 
 def generate_daily_report():
     today = datetime.now().strftime('%Y-%m-%d')
     report_path = REPORTS_DIR / f'{today}.html'
 
-    # Step 1: Fetch Twitter/podcast/blog data from GitHub feeds (existing system)
     result = subprocess.run(
         ['node', 'prepare-digest.js'],
         cwd=SKILL_DIR / 'scripts',
@@ -408,41 +287,23 @@ def generate_daily_report():
     if data.get('status') != 'ok':
         raise RuntimeError(f"Feed error: {data.get('message', 'unknown')}")
 
-    # Step 2: Fetch media sites using RSSHub or legacy RSS
     sources = load_sources()
     media_sites = sources.get('media_sites', DEFAULT_MEDIA_SITES)
     media_articles = []
-    
     for site in media_sites:
         if not site.get('enabled', True):
             continue
-        
-        articles = []
-        
-        if site.get('type') == 'hackernews' or site.get('name') == 'Hacker News':
-            # Try RSSHub first, fallback to legacy
-            articles = fetch_hackernews_rsshub(max_items=5)
-            if not articles:
-                articles = fetch_hackernews_legacy(max_items=5)
-            if articles:
-                media_articles.append({'name': 'Hacker News', 'articles': articles})
-        
-        elif site.get('type') == 'rss' and site.get('rssUrl'):
-            # Try to use RSSHub generic route for RSS feeds
-            # RSSHub doesn't have a generic RSS passthrough, so use legacy
+        if site.get('type') == 'rss' and site.get('rssUrl'):
             articles = fetch_rss_feed(site['rssUrl'], max_items=3)
             if articles:
                 media_articles.append({'name': site['name'], 'articles': articles})
-        
-        elif site.get('type') == 'youtube' and site.get('channelId'):
-            # Use RSSHub for YouTube channels
-            articles = fetch_youtube_channel(site['channelId'], max_items=3)
+        elif site.get('type') == 'hackernews' or site.get('name') == 'Hacker News':
+            articles = fetch_hackernews(max_items=5)
             if articles:
                 media_articles.append({'name': site['name'], 'articles': articles})
 
     data['media'] = media_articles
 
-    # Step 3: Build and save report
     html = build_report_html(data, today)
     with open(report_path, 'w', encoding='utf-8') as f:
         f.write(html)
@@ -637,7 +498,8 @@ def build_report_html(data, date_str):
             '</div>'
             '<div class="feed-detail" id="detail-' + str(idx) + '">'
             + item['detail'] +
-            '</div></div>'
+            '</div>'
+            '</div>'
         )
 
     if not timeline_html:
