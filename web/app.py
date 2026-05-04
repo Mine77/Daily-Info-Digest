@@ -16,6 +16,9 @@ from pathlib import Path
 
 from flask import Flask, render_template, jsonify, request, abort, Response
 
+# Import funding fetcher
+from funding_fetcher import fetch_all_funding_news
+
 app = Flask(__name__, template_folder=str(Path(__file__).parent / 'templates'), static_folder=str(Path(__file__).parent / 'static'))
 
 BASE_DIR = Path(__file__).parent.resolve()
@@ -296,6 +299,13 @@ def generate_daily_report():
                 media_articles.append({'name': site['name'], 'articles': articles})
 
     data['media'] = media_articles
+    
+    # Fetch AI funding news
+    print("Fetching AI funding news...")
+    funding_articles = fetch_all_funding_news()
+    data['funding'] = funding_articles
+    print(f"Found {len(funding_articles)} funding articles")
+    
     html = build_report_html(data, today)
     with open(report_path, 'w', encoding='utf-8') as f:
         f.write(html)
@@ -373,6 +383,19 @@ def build_report_html(data, date_str):
                 'media': '', 'quote': '', 'likes': 0, 'retweets': 0, 'url': article['url'],
             })
 
+    # Add funding news
+    funding = data.get('funding', [])
+    for article in funding:
+        title = article.get('title', '')
+        desc = article.get('description', '')
+        source = article.get('source', 'Unknown')
+        content = f"<strong>{title}</strong><br><br>{desc}" if desc else title
+        timeline_items.append({
+            'type': 'funding', 'category': 'Funding', 'source': source, 'avatar': '',
+            'content': content, 'content_zh': translate(content, 'zh-CN'),
+            'media': '', 'quote': '', 'likes': 0, 'retweets': 0, 'url': article['url'],
+        })
+
     category_counts = {}
     for item in timeline_items:
         cat = item['category']
@@ -380,7 +403,7 @@ def build_report_html(data, date_str):
 
     # Build sidebar with categories + date selector
     sidebar_html = ""
-    categories = ['All', 'Twitter', 'Blog', 'Podcast', 'Media']
+    categories = ['All', 'Twitter', 'Blog', 'Podcast', 'Media', 'Funding']
     for cat in categories:
         count = len(timeline_items) if cat == 'All' else category_counts.get(cat, 0)
         active_class = 'active' if cat == 'All' else ''
@@ -682,6 +705,7 @@ def build_report_html(data, date_str):
         .category-blog {{ background: rgba(245,158,11,0.15); color: #f59e0b; }}
         .category-podcast {{ background: rgba(0,186,124,0.15); color: #00ba7c; }}
         .category-media {{ background: rgba(139,92,246,0.15); color: #8b5cf6; }}
+        .category-funding {{ background: rgba(34,197,94,0.15); color: #22c55e; }}
         body.lang-zh .tweet-content-zh {{ display: block; }}
         body.lang-en .tweet-content-zh {{ display: none; }}
         body.lang-original .tweet-content-zh {{ display: none; }}
@@ -799,7 +823,7 @@ def build_report_html(data, date_str):
 </html>'''
 
 def get_category_icon(category):
-    icons = {'All': '🏠', 'Twitter': '🐦', 'Blog': '📝', 'Podcast': '🎙️', 'Media': '📰'}
+    icons = {'All': '🏠', 'Twitter': '🐦', 'Blog': '📝', 'Podcast': '🎙️', 'Media': '📰', 'Funding': '💰'}
     return icons.get(category, '📄')
 
 def build_card_html(item, index):
