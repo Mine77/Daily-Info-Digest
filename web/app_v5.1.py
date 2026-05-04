@@ -892,14 +892,12 @@ def build_report_html(data, date_str):
         }}
         body.lang-zh .tweet-content-zh {{ display: block; }}
         body.lang-en .tweet-content-zh {{ display: none; }}
-        body.lang-original .tweet-content-zh {{ display: none; }}
     </style>
 </head>
-<body class="lang-original">
+<body class="lang-en">
     <div class="controls">
         <button class="ctrl-btn" id="themeToggle" onclick="toggleTheme()" title="Toggle theme">🌙</button>
-        <button class="ctrl-btn active" onclick="setLang('original')">Original</button>
-        <button class="ctrl-btn" onclick="setLang('en')">EN</button>
+        <button class="ctrl-btn active" onclick="setLang('en')">EN</button>
         <button class="ctrl-btn" onclick="setLang('zh')">CN</button>
     </div>
 
@@ -1004,16 +1002,11 @@ def build_report_html(data, date_str):
 
         // Language toggle
         function setLang(lang) {{
-            document.body.classList.remove('lang-en', 'lang-zh', 'lang-original');
+            document.body.classList.remove('lang-en', 'lang-zh');
             document.body.classList.add('lang-' + lang);
             document.querySelectorAll('.ctrl-btn').forEach(btn => {{
-                const text = btn.textContent.trim();
-                if (text === 'Original' || text === 'EN' || text === 'CN') {{
-                    btn.classList.toggle('active', 
-                        (lang === 'original' && text === 'Original') ||
-                        (lang === 'en' && text === 'EN') ||
-                        (lang === 'zh' && text === 'CN')
-                    );
+                if (btn.textContent.trim() === 'EN' || btn.textContent.trim() === 'CN') {{
+                    btn.classList.toggle('active', btn.textContent.trim() === (lang === 'en' ? 'EN' : 'CN'));
                 }}
             }});
             localStorage.setItem('fb-lang', lang);

@@ -1,20 +1,14 @@
-feat: Phase 2b & 3 - Image cards and distribution
+feat: v5.1 - Theme toggle with system preference + Original language option
 
-Phase 2b - Image Cards:
-- Generate static image cards with brand-consistent templates
-- Support 1:1 (Instagram) and 9:16 (Stories/Reels) aspect ratios
-- Batch generate Top 5 carousel images
-- Include avatar, summary, and URL on each card
-- Dark theme consistent with web dashboard
-
-Phase 3 - Distribution:
-- Twitter/X auto-posting with image cards (API v2)
-- Telegram channel push with photo support
-- Configurable via ~/.follow-builders/config.json
-- Dry-run mode for testing
+Features:
+- Dark/Light theme toggle (follows system preference by default)
+- Theme persists in localStorage
+- Listens for system theme changes
+- Language options: Original (default), EN, CN
+- "Original" shows content as-is without translation
 
 Technical:
-- PIL/Pillow for image generation
-- Tweepy for Twitter API v2
-- Requests for Telegram Bot API
-- Scripts: generate_cards.py, distribute.py
+- CSS variables for dark/light themes
+- [data-theme="light"] selector for light theme
+- window.matchMedia listener for system theme
+- Language toggle with 3 options
