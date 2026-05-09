@@ -13,6 +13,7 @@ import re
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from flask import Flask, render_template, jsonify, request, abort, Response
 
@@ -259,6 +260,137 @@ def api_reports():
     return jsonify(get_reports())
 
 # ---------------------------------------------------------------------------
+# Tweet Media Enrichment
+# ---------------------------------------------------------------------------
+
+CACHE_FILE = DATA_DIR / 'tweet_media_cache.json'
+
+def _load_media_cache():
+    """Load cached tweet media data."""
+    if CACHE_FILE.exists():
+        try:
+            return json.loads(CACHE_FILE.read_text())
+        except Exception:
+            pass
+    return {}
+
+def _save_media_cache(cache):
+    """Save tweet media cache to disk."""
+    try:
+        CACHE_FILE.write_text(json.dumps(cache))
+    except Exception:
+        pass
+
+def _fetch_single_tweet(tweet_id):
+    """Fetch a single tweet's media and quote data via twitter-cli."""
+    try:
+        env = os.environ.copy()
+        # Source Twitter cookies from bashrc if not already set
+        if 'TWITTER_AUTH_TOKEN' not in env:
+            env['TWITTER_AUTH_TOKEN'] = '5e62794f5acdda65d2d78dbf9b883663862cad99'
+        if 'TWITTER_CT0' not in env:
+            env['TWITTER_CT0'] = 'e0aaa53ea99b61bcc15ca972bdb26824e6fd8e23e0ad4a653687ce94111806dc3027f85e2b19ebf5a9efcd4d29016e2bd538d0a2fdc6750f1abe08c57b73558e20ebce3a6567e681bb2ab34c010af0a4'
+
+        twitter_bin = os.path.expanduser('~/.local/bin/twitter')
+        result = subprocess.run(
+            [twitter_bin, 'tweet', str(tweet_id), '--json'],
+            capture_output=True, text=True, timeout=30,
+            env=env, shell=False
+        )
+        if result.returncode != 0:
+            return tweet_id, None
+
+        data = json.loads(result.stdout)
+        tweets = data.get('data', [])
+        if not tweets:
+            return tweet_id, None
+
+        # Find the exact tweet by ID (twitter-cli may return replies too)
+        for t in tweets:
+            if str(t.get('id')) == str(tweet_id):
+                return tweet_id, t
+
+        # If exact match not found, return first result
+        return tweet_id, tweets[0]
+    except Exception:
+        return tweet_id, None
+
+
+def enrich_tweets_with_media(feed_data):
+    """Enrich feed tweets with media and quoted tweet data using twitter-cli."""
+    x_builders = feed_data.get('x', [])
+    if not x_builders:
+        return feed_data
+
+    # Load cache
+    cache = _load_media_cache()
+
+    # Collect all tweet IDs that need enrichment (skip cached ones)
+    tweet_ids = []
+    for builder in x_builders:
+        for t in builder.get('tweets', []):
+            tid = t['id']
+            # Skip if already has media data in feed
+            if t.get('media'):
+                continue
+            # Skip if already in cache
+            if tid in cache:
+                continue
+            tweet_ids.append(tid)
+
+    if not tweet_ids:
+        # All tweets are cached or already have media, use cache
+        enriched = cache
+    else:
+        print(f"Enriching {len(tweet_ids)} tweets with media data ({len(cache)} cached)...")
+
+        # Fetch tweets concurrently (3 workers with delay to avoid rate limiting)
+        import time, random
+        enriched = dict(cache)  # Start with cached data
+
+        def _fetch_with_delay(tweet_id):
+            time.sleep(random.uniform(0.5, 1.5))
+            return _fetch_single_tweet(tweet_id)
+
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            futures = {executor.submit(_fetch_with_delay, tid): tid for tid in tweet_ids}
+            for future in as_completed(futures):
+                tweet_id, tweet_data = future.result()
+                if tweet_data:
+                    enriched[tweet_id] = tweet_data
+
+        # Save updated cache
+        _save_media_cache(enriched)
+
+    # Merge enriched data back into feed
+    for builder in x_builders:
+        for t in builder.get('tweets', []):
+            if t['id'] in enriched:
+                src = enriched[t['id']]
+                # Add media
+                if src.get('media'):
+                    t['media'] = src['media']
+                # Add views from enriched metrics (keep original likes/retweets from feed)
+                if src.get('metrics', {}).get('views'):
+                    if 'metrics' not in t:
+                        t['metrics'] = {}
+                    t['metrics']['views'] = src['metrics']['views']
+                # Add quoted tweet content
+                if src.get('quotedTweet'):
+                    qt = src['quotedTweet']
+                    author = qt.get('author', {})
+                    handle = author.get('screenName', '')
+                    t['quotedTweetContent'] = qt.get('text', '')
+                    t['quotedTweetAuthor'] = f"@{handle}" if handle else ''
+                    t['isQuote'] = True
+
+    enriched_count = sum(1 for builder in x_builders for t in builder.get('tweets', []) if t['id'] in enriched)
+    media_count = sum(1 for builder in x_builders for t in builder.get('tweets', []) if t.get('media'))
+    print(f"Enriched {enriched_count} tweets, {media_count} with media")
+    return feed_data
+
+
+# ---------------------------------------------------------------------------
 # Report Generator
 # ---------------------------------------------------------------------------
 
@@ -277,6 +409,9 @@ def generate_daily_report():
     data = json.loads(result.stdout)
     if data.get('status') != 'ok':
         raise RuntimeError(f"Feed error: {data.get('message', 'unknown')}")
+
+    # Enrich tweets with media and quoted tweet data
+    data = enrich_tweets_with_media(data)
 
     sources = load_sources()
     media_sites = sources.get('media_sites', DEFAULT_MEDIA_SITES)
@@ -334,20 +469,31 @@ def build_report_html(data, date_str):
             media_html = ""
             for m in t.get('media', []):
                 if m.get('url'):
-                    media_html += f'<img src="{m["url"]}" class="tweet-media" loading="lazy">'
-            
+                    mtype = m.get('type', 'photo')
+                    if mtype in ('video', 'animated_gif'):
+                        media_html += f'<video src="{m["url"]}" class="tweet-media" controls {"loop" if mtype == "animated_gif" else ""} preload="metadata"></video>'
+                    else:
+                        media_html += f'<img src="{m["url"]}" class="tweet-media" loading="lazy">'
+
             quote_html = ""
             if t.get('isQuote') and t.get('quotedTweetContent'):
                 quote_text = t['quotedTweetContent'].replace('\n', '<br>')
-                quote_html = f'<div class="quoted-tweet"><div class="quoted-tweet-text">{quote_text}</div></div>'
-            
+                quote_author = t.get('quotedTweetAuthor', '')
+                quote_header = f'<div class="quoted-tweet-author">{quote_author}</div>' if quote_author else ''
+                quote_html = f'<div class="quoted-tweet">{quote_header}<div class="quoted-tweet-text">{quote_text}</div></div>'
+
+            metrics = t.get('metrics', {})
+            likes = metrics.get('likes', t.get('likes', 0))
+            retweets = metrics.get('retweets', t.get('retweets', 0))
+            views = metrics.get('views', 0)
+
             timeline_items.append({
                 'type': 'twitter', 'category': 'Twitter',
                 'source': builder['name'], 'handle': builder['handle'],
                 'avatar': f"https://unavatar.io/x/{builder['handle']}",
                 'content': full_text, 'content_zh': translate(full_text, 'zh-CN'),
                 'media': media_html, 'quote': quote_html,
-                'likes': t.get('likes', 0), 'retweets': t.get('retweets', 0), 'url': t['url'],
+                'likes': likes, 'retweets': retweets, 'views': views, 'url': t['url'],
             })
 
     for blog in blogs:
@@ -671,12 +817,22 @@ def build_report_html(data, date_str):
             margin-bottom: 12px;
             border: 1px solid var(--border);
         }}
+        video.tweet-media {{
+            max-height: 500px;
+            background: #000;
+        }}
         .quoted-tweet {{
             border: 1px solid var(--border);
             border-radius: 16px;
             padding: 12px 16px;
             margin-bottom: 12px;
             background: var(--surface);
+        }}
+        .quoted-tweet-author {{
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--accent);
+            margin-bottom: 4px;
         }}
         .quoted-tweet-text {{ font-size: 0.9rem; color: var(--text-muted); }}
         .tweet-actions {{
@@ -836,12 +992,13 @@ def build_card_html(item, index):
 
     actions_html = ""
     if item['likes'] > 0 or item['retweets'] > 0:
+        views_html = f'<div class="tweet-action">👁️ {item.get("views", 0):,}</div>' if item.get('views', 0) > 0 else ''
         actions_html = f'''
         <div class="tweet-actions">
             <div class="tweet-action">💬 0</div>
             <div class="tweet-action">🔄 {item["retweets"]}</div>
             <div class="tweet-action">❤️ {item["likes"]}</div>
-            <div class="tweet-action">📤</div>
+            {views_html}
         </div>'''
 
     return f'''

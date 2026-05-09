@@ -7,3 +7,4 @@ __pycache__/
 web/static/reports/
 web/data/
 
+web/data/tweet_media_cache.json
